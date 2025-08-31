@@ -42,8 +42,8 @@ jobs:
 
       - name: Rollout Deployment
         run: |
-          oc rollout restart deployment/URL-Shortener
-          oc rollout status deployment/URL-Shortener --timeout=180s
+          oc rollout restart deployment/urlshortener
+          oc rollout status deployment/urlshortener --timeout=180s
 
       - name: Send success email
         if: success()
