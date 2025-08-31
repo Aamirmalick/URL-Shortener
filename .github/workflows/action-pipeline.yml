@@ -33,12 +33,12 @@ jobs:
       - name: Login to OpenShift
         run: |
           oc login ${{ secrets.OPENSHIFT_SERVER }} --token=${{ secrets.OPENSHIFT_TOKEN }} --insecure-skip-tls-verify=true
-          oc project m-aamirmalick-dev
+          oc project ${{ secrets.CLUSTER_NAME }}
 
       - name: Trigger OpenShift Build
         run: |
-          oc start-build URL-Shortener-build --follow
           oc apply -f deploy/openshift-cluster.yaml
+          oc start-build URL-Shortener-build --follow -n ${{ secrets.CLUSTER_NAME }}
 
       - name: Rollout Deployment
         run: |
