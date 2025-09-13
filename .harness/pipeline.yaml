@@ -1,0 +1,138 @@
+pipeline:
+  name: Java_CI_CD_OpenShift
+  identifier: Java_CI_CD_OpenShift
+  projectIdentifier: my_project
+  orgIdentifier: default
+  tags: {}
+
+  stages:
+    - stage:
+        name: Build
+        identifier: Build
+        type: CI
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Checkout Code
+                  identifier: Checkout
+                  type: GitClone
+                  spec: {}
+
+              - step:
+                  name: Set up JDK 17
+                  identifier: Setup_JDK
+                  type: Run
+                  spec:
+                    shell: Bash
+                    command: |
+                      echo "Setting up Java 17 (Temurin)..."
+                      # In Harness CI image, JDK usually exists. Ensure Maven cache is used.
+
+              - step:
+                  name: Build Maven Project
+                  identifier: Build_Maven
+                  type: Run
+                  spec:
+                    shell: Bash
+                    command: |
+                      mvn clean package -DskipTests -B
+
+    - stage:
+        name: Deploy_to_OpenShift
+        identifier: Deploy_to_OpenShift
+        type: CD
+        spec:
+          deploymentType: Kubernetes
+          execution:
+            steps:
+              - step:
+                  name: Install OpenShift CLI
+                  identifier: Install_OC
+                  type: Run
+                  spec:
+                    shell: Bash
+                    command: |
+                      curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/oc/latest/linux/oc.tar.gz
+                      tar -xvf oc.tar.gz
+                      mv oc /usr/local/bin/
+                      oc version
+
+              - step:
+                  name: Login to OpenShift
+                  identifier: OC_Login
+                  type: Run
+                  spec:
+                    shell: Bash
+                    command: |
+                      oc login ${OPENSHIFT_SERVER} --token=${OPENSHIFT_TOKEN} --insecure-skip-tls-verify=true
+                      oc project ${CLUSTER_NAME}
+
+              - step:
+                  name: Apply OpenShift YAML
+                  identifier: Apply_OC_Config
+                  type: Run
+                  spec:
+                    shell: Bash
+                    command: |
+                      oc apply -f deploy/openshift-cluster.yaml
+
+              - step:
+                  name: Trigger OpenShift Build
+                  identifier: Trigger_Build
+                  type: Run
+                  spec:
+                    shell: Bash
+                    command: |
+                      oc start-build urlshortener-build --follow -n ${CLUSTER_NAME}
+
+              - step:
+                  name: Rollout Deployment
+                  identifier: Rollout_Deployment
+                  type: Run
+                  spec:
+                    shell: Bash
+                    command: |
+                      oc rollout restart deployment/urlshortener
+                      oc rollout status deployment/urlshortener --timeout=180s
+
+    - stage:
+        name: Notifications
+        identifier: Notifications
+        type: Custom
+        spec:
+          execution:
+            steps:
+              - step:
+                  name: Send Success Email
+                  identifier: Send_Success_Email
+                  type: Email
+                  spec:
+                    to: 
+                      - m.aamirmalick@gmail.com
+                    cc: []
+                    subject: "✅ Build Succeeded"
+                    body: |
+                      ✅ Build succeeded on ${pipeline.name}
+                      🔢 Commit SHA: ${HARNESS_COMMIT_SHA}
+                      🧑‍💻 Committed by: ${HARNESS_GIT_AUTHOR}
+                      📝 Commit message: ${HARNESS_GIT_COMMIT_MESSAGE}
+                  when:
+                    condition: "<+pipeline.status> == 'Succeeded'"
+
+              - step:
+                  name: Send Failure Email
+                  identifier: Send_Failure_Email
+                  type: Email
+                  spec:
+                    to: 
+                      - m.aamirmalick@gmail.com
+                    cc: []
+                    subject: "❌ Build Failed"
+                    body: |
+                      ❌ Build failed on ${pipeline.name}
+                      🔢 Commit SHA: ${HARNESS_COMMIT_SHA}
+                      🧑‍💻 Committed by: ${HARNESS_GIT_AUTHOR}
+                      📝 Commit message: ${HARNESS_GIT_COMMIT_MESSAGE}
+                  when:
+                    condition: "<+pipeline.status> == 'Failed'"
